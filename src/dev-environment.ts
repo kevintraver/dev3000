@@ -185,6 +185,7 @@ interface DevEnvironmentOptions {
   debugPort?: number // Chrome debugging port (default 9222, auto-incremented for multiple instances)
   headless?: boolean // Run Chrome in headless mode (for serverless/CI environments)
   withAgent?: string // Command to run an embedded agent (e.g. "claude --dangerously-skip-permissions")
+  additionalPorts?: string[] // Additional ports to clean up on shutdown (e.g., for monorepos with multiple services)
 }
 
 class Logger {
@@ -2632,6 +2633,13 @@ export class DevEnvironment {
     console.log(chalk.cyan("🔄 Killing app server..."))
     await killPortProcess(this.options.port, "your app server")
 
+    // Kill additional ports if configured (for monorepos with multiple services)
+    if (this.options.additionalPorts?.length) {
+      for (const port of this.options.additionalPorts) {
+        await killPortProcess(port, `service on port ${port}`)
+      }
+    }
+
     // Kill server process and its children using the saved PID (from before session file was deleted)
     if (!isInSandbox() && savedServerPid) {
       try {
@@ -2933,6 +2941,13 @@ export class DevEnvironment {
     // Fallback: kill any remaining processes on the port
     await killPortProcess(this.options.port, "your app server")
 
+    // Kill additional ports if configured (for monorepos with multiple services)
+    if (this.options.additionalPorts?.length) {
+      for (const port of this.options.additionalPorts) {
+        await killPortProcess(port, `service on port ${port}`)
+      }
+    }
+
     // Add a small delay to let the kill process complete
     await new Promise((resolve) => setTimeout(resolve, 100))
 
@@ -2942,6 +2957,14 @@ export class DevEnvironment {
       // Kill by port
       spawnSync("sh", ["-c", `pkill -f ":${this.options.port}"`], { stdio: "ignore" })
       this.debugLog(`Sent pkill signal for port ${this.options.port}`)
+
+      // Also pkill additional ports
+      if (this.options.additionalPorts?.length) {
+        for (const port of this.options.additionalPorts) {
+          spawnSync("sh", ["-c", `pkill -f ":${port}"`], { stdio: "ignore" })
+          this.debugLog(`Sent pkill signal for port ${port}`)
+        }
+      }
 
       // Kill server process and its children using the saved PID (from before session file was deleted)
       if (savedServerPid) {
